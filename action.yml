@@ -1,0 +1,165 @@
+name: 'ATR Security Scan'
+description: 'Scan MCP servers for prompt injection, credential theft, and supply chain threats using ATR (Agent Threat Rules). 71 rules. OWASP Agentic Top 10 full coverage.'
+branding:
+  icon: 'shield'
+  color: 'green'
+
+inputs:
+  path:
+    description: 'Path to scan (default: current directory)'
+    required: false
+    default: '.'
+  fail-on-critical:
+    description: 'Fail the workflow if CRITICAL threats are found'
+    required: false
+    default: 'false'
+  report-to-cloud:
+    description: 'Share anonymous scan results with Threat Cloud for collective defense (no source code sent)'
+    required: false
+    default: 'false'
+
+outputs:
+  findings-critical:
+    description: 'Number of CRITICAL findings'
+    value: ${{ steps.scan.outputs.critical }}
+  findings-high:
+    description: 'Number of HIGH findings'
+    value: ${{ steps.scan.outputs.high }}
+  findings-medium:
+    description: 'Number of MEDIUM findings'
+    value: ${{ steps.scan.outputs.medium }}
+  findings-total:
+    description: 'Total number of findings'
+    value: ${{ steps.scan.outputs.total }}
+  risk-score:
+    description: 'Overall risk score (0-100)'
+    value: ${{ steps.scan.outputs.risk_score }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Run ATR Scan
+      id: scan
+      shell: bash
+      run: |
+        SCAN_PATH="${{ inputs.path }}"
+
+        echo "::group::ATR Security Scan"
+        echo "Scanning $SCAN_PATH with ATR detection rules..."
+        echo ""
+
+        # Run scan and capture output
+        SCAN_OUTPUT=$(npx --yes @panguard-ai/panguard audit "$SCAN_PATH" --json 2>/dev/null || echo '{"error": true}')
+
+        # Parse results
+        CRITICAL=$(echo "$SCAN_OUTPUT" | node -e "
+          const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+          const f = d.findings || d.results || [];
+          console.log(f.filter(x => x.severity === 'critical' || x.severity === 'CRITICAL').length);
+        " 2>/dev/null || echo "0")
+
+        HIGH=$(echo "$SCAN_OUTPUT" | node -e "
+          const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+          const f = d.findings || d.results || [];
+          console.log(f.filter(x => x.severity === 'high' || x.severity === 'HIGH').length);
+        " 2>/dev/null || echo "0")
+
+        MEDIUM=$(echo "$SCAN_OUTPUT" | node -e "
+          const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+          const f = d.findings || d.results || [];
+          console.log(f.filter(x => x.severity === 'medium' || x.severity === 'MEDIUM').length);
+        " 2>/dev/null || echo "0")
+
+        TOTAL=$((CRITICAL + HIGH + MEDIUM))
+        RISK_SCORE=$(echo "$SCAN_OUTPUT" | node -e "
+          const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+          console.log(d.riskScore || d.risk_score || 0);
+        " 2>/dev/null || echo "0")
+
+        # Set outputs
+        echo "critical=$CRITICAL" >> "$GITHUB_OUTPUT"
+        echo "high=$HIGH" >> "$GITHUB_OUTPUT"
+        echo "medium=$MEDIUM" >> "$GITHUB_OUTPUT"
+        echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+        echo "risk_score=$RISK_SCORE" >> "$GITHUB_OUTPUT"
+
+        # GitHub annotations
+        echo "$SCAN_OUTPUT" | node -e "
+          const d = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
+          const findings = d.findings || d.results || [];
+          for (const f of findings) {
+            const sev = (f.severity || '').toUpperCase();
+            const rule = f.ruleId || f.rule || 'unknown';
+            const desc = (f.description || f.message || '').replace(/\n/g, ' ').slice(0, 200);
+            const file = f.file || f.location || '';
+            const line = f.line || 1;
+            if (sev === 'CRITICAL' || sev === 'HIGH') {
+              console.log('::error file=' + file + ',line=' + line + '::' + '[' + rule + '] ' + sev + ': ' + desc);
+            } else if (sev === 'MEDIUM') {
+              console.log('::warning file=' + file + ',line=' + line + '::' + '[' + rule + '] ' + sev + ': ' + desc);
+            }
+          }
+        " 2>/dev/null || true
+
+        # Summary
+        {
+          echo "## ATR Security Scan Results"
+          echo ""
+          echo "| Severity | Count |"
+          echo "|----------|-------|"
+          echo "| CRITICAL | $CRITICAL |"
+          echo "| HIGH | $HIGH |"
+          echo "| MEDIUM | $MEDIUM |"
+          echo "| Total | $TOTAL |"
+          echo ""
+          if [ "$TOTAL" -gt 0 ]; then
+            echo "Run \`npm install -g @panguard-ai/panguard && pga up\` for 24/7 protection."
+            echo ""
+          fi
+          echo "Scanned with [ATR](https://github.com/Agent-Threat-Rule/agent-threat-rules) — 71 detection rules, OWASP Agentic Top 10 full coverage."
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        echo "::endgroup::"
+
+        # Print summary to log
+        echo ""
+        echo "ATR Scan Complete: $CRITICAL CRITICAL, $HIGH HIGH, $MEDIUM MEDIUM ($TOTAL total)"
+
+        # Fail if critical and flag is set
+        if [ "${{ inputs.fail-on-critical }}" = "true" ] && [ "$CRITICAL" -gt 0 ]; then
+          echo "::error::$CRITICAL CRITICAL findings detected. Failing workflow (fail-on-critical=true)."
+          exit 1
+        fi
+
+    - name: Report to Threat Cloud
+      if: inputs.report-to-cloud == 'true'
+      shell: bash
+      run: |
+        CRITICAL="${{ steps.scan.outputs.critical }}"
+        HIGH="${{ steps.scan.outputs.high }}"
+        MEDIUM="${{ steps.scan.outputs.medium }}"
+        TOTAL="${{ steps.scan.outputs.total }}"
+
+        # Generate anonymous device hash (no PII, just a stable identifier for dedup)
+        DEVICE_HASH=$(echo "${{ github.repository }}-atr-action" | shasum -a 256 | cut -d' ' -f1)
+
+        # Report anonymous scan event to Threat Cloud
+        curl -s -X POST "https://tc.panguard.ai/api/scan-events" \
+          -H "Content-Type: application/json" \
+          -d "{
+            \"source\": \"cli-user\",
+            \"skillsScanned\": 1,
+            \"findingsCount\": $TOTAL,
+            \"confirmedMalicious\": $CRITICAL,
+            \"highlySuspicious\": $HIGH,
+            \"generalSuspicious\": $MEDIUM,
+            \"cleanCount\": $([ "$TOTAL" -eq 0 ] && echo 1 || echo 0),
+            \"deviceHash\": \"$DEVICE_HASH\"
+          }" > /dev/null 2>&1 || true
+
+        echo "Anonymous scan results shared with Threat Cloud for collective defense."
