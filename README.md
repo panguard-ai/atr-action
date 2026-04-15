@@ -1,105 +1,75 @@
-# ATR Security Scan — GitHub Action
+# ATR Security Scan
 
-Scan MCP servers for prompt injection, credential theft, and supply chain threats in CI. 71 detection rules. OWASP Agentic Top 10 full coverage. One file. No source code changes.
+Scan AI agent skills and MCP tool descriptions for security threats.
+
+113 rules. 96K skills scanned. 751 malware discovered. Shipped in Cisco AI Defense.
 
 ## Quick Start
 
 ```yaml
-# .github/workflows/atr-security-scan.yml
-name: Security Scan
-on: [push, pull_request]
+name: ATR Security Scan
+on: [pull_request]
 jobs:
-  atr-scan:
+  scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: panguard-ai/atr-action@v1
 ```
 
-## What It Checks
+Results appear in GitHub's **Security** tab as code scanning alerts.
 
-- Prompt injection patterns in tool descriptions and responses
-- Credential exposure (API keys, tokens, secrets in tool output)
-- Supply chain risk indicators (postinstall scripts, typosquatting signals)
-- Tool poisoning (hidden instructions, consent bypass, trust escalation)
-- 71 ATR rules covering all 10 OWASP Agentic Top 10 categories
-
-## Options
+## Inputs
 
 | Input | Default | Description |
 |-------|---------|-------------|
-| path | . | Path to scan |
-| fail-on-critical | false | Fail the workflow if CRITICAL threats are found |
-| report-to-cloud | false | Share anonymous scan results with Threat Cloud (no source code sent) |
+| `path` | `.` | Path to scan |
+| `severity` | `medium` | Minimum severity (critical, high, medium, low) |
+| `fail-on-findings` | `false` | Fail the action if findings detected |
+| `sarif` | `true` | Upload SARIF to GitHub Security tab |
 
-## Outputs
+## What It Scans
 
-| Output | Description |
-|--------|-------------|
-| findings-critical | Number of CRITICAL findings |
-| findings-high | Number of HIGH findings |
-| findings-medium | Number of MEDIUM findings |
-| findings-total | Total findings count |
-| risk-score | Overall risk score (0-100) |
+- `SKILL.md` files (AI agent skill definitions)
+- `mcp.json` / `mcp-config.json` (MCP server configurations)
+- Any `.skill.md` file
 
-## Threat Cloud (Collective Defense)
+## What It Detects
 
-Set `report-to-cloud: true` to anonymously share scan results with Threat Cloud. Every scan makes the detection network stronger for everyone.
+113 detection rules across 9 threat categories:
 
-What gets sent: severity counts + content hash. What never gets sent: source code, file paths, repo name.
+- Prompt injection (identity override, system prompt manipulation)
+- Tool poisoning (malicious tool descriptions, response injection)
+- Credential theft (SSH key exfiltration, API token harvesting)
+- Data exfiltration (DNS tunneling, wallet theft, browser data)
+- Privilege escalation (sudo abuse, SUID manipulation)
+- Supply chain attacks (typosquatting, rug pull, version spoofing)
 
-```yaml
-- uses: panguard-ai/atr-action@v1
-  with:
-    report-to-cloud: 'true'
-```
+Full rule list: [agentthreatrule.org/rules](https://agentthreatrule.org/en/rules)
 
-## Examples
-
-Fail CI on critical findings:
+## Example: Block Critical Findings
 
 ```yaml
 - uses: panguard-ai/atr-action@v1
   with:
-    fail-on-critical: 'true'
+    fail-on-findings: 'true'
+    severity: 'critical'
 ```
 
-Scan a specific directory:
+## Example: Scan Specific Directory
 
 ```yaml
 - uses: panguard-ai/atr-action@v1
   with:
-    path: './src/mcp-server'
+    path: './skills'
 ```
 
-Use outputs in subsequent steps:
+## Links
 
-```yaml
-- uses: panguard-ai/atr-action@v1
-  id: security
-- run: echo "Found ${{ steps.security.outputs.findings-critical }} critical issues"
-```
-
-## Badge
-
-Add to your README:
-
-```markdown
-[![ATR Security Scan](https://img.shields.io/badge/ATR-scanned-brightgreen?style=flat-square)](https://github.com/Agent-Threat-Rule/agent-threat-rules)
-```
-
-## About ATR
-
-ATR (Agent Threat Rules) is an open-source detection ruleset for AI agent security threats. 71 YAML-based rules. Engine-agnostic. MIT licensed.
-
-- 62.7% recall, 99.7% precision on PINT benchmark (850 adversarial samples)
-- Scanned 36,394 MCP skills from ClawHub ecosystem
-- OWASP Agentic Top 10: 10/10 categories covered
-- SAFE-MCP: 78/85 techniques covered (91.8%)
-- Paper: https://doi.org/10.5281/zenodo.19178002
-
-Repository: https://github.com/Agent-Threat-Rule/agent-threat-rules
-Website: https://panguard.ai
+- [ATR Website](https://agentthreatrule.org)
+- [ATR Rules](https://github.com/Agent-Threat-Rule/agent-threat-rules)
+- [Threat Feed](https://agentthreatrule.org/en/threats)
+- [RFC-001 Quality Standard](https://agentthreatrule.org/en/quality-standard)
 
 ## License
 
