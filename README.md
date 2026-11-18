@@ -2,7 +2,7 @@
 
 Scan AI agent skills and MCP tool descriptions for security threats.
 
-113 rules. 96K skills scanned. 751 malware discovered. Shipped in Cisco AI Defense.
+Runs the latest [agent-threat-rules](https://www.npmjs.com/package/agent-threat-rules) release from npm, so the rule set is always the current one. ATR rules also ship inside Cisco AI Defense skill-scanner.
 
 ## Quick Start
 
@@ -36,7 +36,7 @@ Results appear in GitHub's **Security** tab as code scanning alerts.
 
 ## What It Detects
 
-113 detection rules across 9 threat categories:
+Every rule in the latest ATR release (current count in [stats.json](https://raw.githubusercontent.com/Agent-Threat-Rule/agent-threat-rules/main/data/stats.json)), including:
 
 - Prompt injection (identity override, system prompt manipulation)
 - Tool poisoning (malicious tool descriptions, response injection)
